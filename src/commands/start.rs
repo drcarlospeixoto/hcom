@@ -533,6 +533,20 @@ fn start_rebind(
             eprintln!("[hcom] warn: set_process_binding failed for {target_name}: {e}");
         }
 
+        // Persist the numeric PID on the instance row.
+        //
+        // The stale-instance cleanup already spares rows whose `instances.pid` is
+        // alive (`skip_live_pid`), but nothing on the `hcom start` path used to
+        // write that column. With a symbolic process id (e.g. a custom launcher token
+        // token) the row kept `pid = NULL`, so the cleanup deleted a live session:
+        // the instance and both bindings disappeared, and every later hook
+        // resolved to `no_instance` with no path back.
+        if let Some(pid_num) = process_id.trim().parse::<u32>().ok()
+            && let Err(e) = db.update_instance_pid(&target_name, pid_num)
+        {
+            eprintln!("[hcom] warn: update_instance_pid failed for {target_name}: {e}");
+        }
+
         // Migrate notify endpoints before notify so wake reaches correct port
         if !current_name.is_empty()
             && current_name != target_name
