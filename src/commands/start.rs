@@ -831,6 +831,21 @@ fn start_bare(db: &HcomDb, ctx: &HcomContext, explicit_name: Option<&str>) -> Re
         eprintln!("[hcom] warn: set_process_binding failed for {name}: {e}");
     }
 
+    // Same PID persistence as the rebind path above: this is the ORDINARY start
+    // path, where a session is registered for the first time. Without it the
+    // instance keeps `pid = NULL` and the stale cleanup has nothing to check, so
+    // an idle-but-live session is deleted (instance + bindings) and every later
+    // hook resolves to `no_instance`.
+    if let Some(ref process_id) = ctx.process_id
+        && let Some(pid_num) = process_id.trim().parse::<u32>().ok()
+        && process_owner
+            .as_ref()
+            .is_none_or(|owner| owner.name == name)
+        && let Err(e) = db.update_instance_pid(&name, pid_num)
+    {
+        eprintln!("[hcom] warn: update_instance_pid failed for {name}: {e}");
+    }
+
     print_bootstrap(db, ctx, &name, tool);
 
     // Log
