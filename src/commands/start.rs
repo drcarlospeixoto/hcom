@@ -992,6 +992,35 @@ mod tests {
         );
     }
 
+    // Regression for the reported case: `hcom start --name <agent>` goes through
+    // `start_bare` (no `--as`), so the PID write must happen there too. Before the
+    // fix the row kept `pid = NULL` and the clock-based stale cleanup deleted a
+    // session that was still alive.
+    #[test]
+    #[serial]
+    fn ordinary_start_persists_numeric_pid() {
+        let (_dir, _hcom_dir, _home, _guard) = crate::hooks::test_helpers::isolated_test_env();
+        let db = HcomDb::open().unwrap();
+
+        let pid = std::process::id();
+        let env = HashMap::from([("HCOM_PROCESS_ID".to_string(), pid.to_string())]);
+        let ctx = HcomContext::from_env(&env, PathBuf::from("/tmp"));
+
+        start_bare(&db, &ctx, Some("probe")).unwrap();
+
+        let stored: Option<i64> = db
+            .conn()
+            .query_row("SELECT pid FROM instances WHERE name = 'probe'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(
+            stored,
+            Some(i64::from(pid)),
+            "ordinary start must persist the numeric pid so stale cleanup spares the live session"
+        );
+    }
+
     #[test]
     fn test_resolve_claude_session_id() {
         let env = |value: Option<&str>| -> HashMap<String, String> {
